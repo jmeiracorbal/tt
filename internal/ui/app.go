@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/dankkomcg/tilt-tui/internal/api"
+	"github.com/jmeiracorbal/tt/internal/api"
 )
 
 const pollInterval = 3 * time.Second
@@ -326,7 +326,7 @@ func countStatuses(resources []api.Resource) statusCounts {
 
 func (m Model) View() string {
 	if !m.ready {
-		return "\n  Loading tilt-tui...\n"
+		return "\n  Loading tt...\n"
 	}
 
 	header := m.renderHeader()
@@ -381,7 +381,7 @@ func (m Model) renderHeader() string {
 		badges = append(badges, errorStyle.Render("unreachable"))
 	}
 
-	left := headerStyle.Render("⚡ tilt-tui  " + dimStyle.Render(m.addr))
+	left := headerStyle.Render("tt  " + dimStyle.Render(m.addr))
 	right := headerRightStyle.Render(strings.Join(badges, "  "))
 	fill := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if fill < 0 {

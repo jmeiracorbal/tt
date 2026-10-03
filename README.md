@@ -1,13 +1,11 @@
 # tt
 
-[![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8?style=flat-square&logo=go)](https://go.dev)
+[![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat-square&logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/jmeiracorbal/tt?style=flat-square)](https://goreportcard.com/report/github.com/jmeiracorbal/tt)
-[![Release](https://img.shields.io/github/v/release/jmeiracorbal/tt?style=flat-square)](https://github.com/jmeiracorbal/tt/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/jmeiracorbal/tt)](https://goreportcard.com/report/github.com/jmeiracorbal/tt)
+[![Release](https://img.shields.io/github/v/release/jmeiracorbal/tt?style=flat-square&include_prereleases)](https://github.com/jmeiracorbal/tt/releases)
 
-Terminal UI for [Tilt](https://tilt.dev) — monitor your local services without leaving the terminal.
-
-![tt screenshot](docs/screenshot.png)
+Terminal UI for [Tilt](https://github.com/tilt-dev/tilt). Monitor your local services without leaving the terminal.
 
 ## Features
 
@@ -15,6 +13,28 @@ Terminal UI for [Tilt](https://tilt.dev) — monitor your local services without
 - Per-resource log viewer with scroll
 - Keyboard-driven navigation
 - Connects to any running Tilt instance
+
+## Requirements
+
+### Tilt
+
+tt requires a running Tilt instance. Install Tilt from [tilt.dev](https://docs.tilt.dev/install.html):
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+```
+
+```bash
+# macOS via Homebrew
+brew install tilt
+```
+
+For other platforms see the [official install guide](https://docs.tilt.dev/install.html).
+
+### Go
+
+Go 1.22 or later (only required if building from source).
 
 ## Install
 
@@ -65,26 +85,6 @@ tt --port 10351
 | `PgUp` / `PgDn` | Scroll logs |
 | `r` | Force refresh |
 | `q` / `Ctrl+C` | Quit |
-
-## Requirements
-
-- Go 1.21+
-- [Tilt](https://tilt.dev) running locally
-
-## Example project
-
-An example project with FastAPI + Docker Compose is available under [`../example/`](../example/). Run it with:
-
-```bash
-cd example
-tilt up
-```
-
-Then in another terminal:
-
-```bash
-tt
-```
 
 ## License
 

@@ -6,8 +6,8 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dankkomcg/tilt-tui/internal/api"
-	"github.com/dankkomcg/tilt-tui/internal/ui"
+	"github.com/jmeiracorbal/tt/internal/api"
+	"github.com/jmeiracorbal/tt/internal/ui"
 )
 
 var version = "dev"
