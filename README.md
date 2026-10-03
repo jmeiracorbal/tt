@@ -1,11 +1,13 @@
-# tt
+# tilt-tui
+
+> `tt` on the command line. A terminal UI for [Tilt](https://github.com/tilt-dev/tilt).
 
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat-square&logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jmeiracorbal/tt)](https://goreportcard.com/report/github.com/jmeiracorbal/tt)
 [![Release](https://img.shields.io/github/v/release/jmeiracorbal/tt?style=flat-square&include_prereleases)](https://github.com/jmeiracorbal/tt/releases)
 
-Terminal UI for [Tilt](https://github.com/tilt-dev/tilt). Monitor your local services without leaving the terminal.
+Monitor your local services without leaving the terminal.
 
 ## Features
 
