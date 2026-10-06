@@ -4,3 +4,7 @@
 .pi
 CLAUDE.md
 AGENTS.md
+.agents/
+.devin/
+.windsurf/
+skills-lock.json

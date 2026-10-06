@@ -13,6 +13,10 @@ import (
 
 const pollInterval = 3 * time.Second
 
+// minWidth / minHeight: below these the layout breaks down.
+const minWidth = 40
+const minHeight = 8
+
 type activeTab int
 
 const (
@@ -175,35 +179,35 @@ func (m Model) rightPanelWidth() int {
 	return m.width - m.leftPanelWidth()
 }
 
-// panelHeight is the rows available for panels: total minus header, 2 dot lines, menu.
+// panelHeight is rows available for the panel area: total minus header and footer.
 func (m Model) panelHeight() int {
-	h := m.height - 4
+	h := m.height - 2
 	if h < 4 {
 		h = 4
 	}
 	return h
 }
 
-// resourcesVPSize: right panel minus padding(2), panel minus title bar(1).
+// resourcesVPSize: right panel content minus borders (2) and title row (1).
 func (m Model) resourcesVPSize() (int, int) {
 	w := m.rightPanelWidth() - 2
 	if w < 10 {
 		w = 10
 	}
-	h := m.panelHeight() - 1
+	h := m.panelHeight() - 3 // borders(2) + title(1)
 	if h < 1 {
 		h = 1
 	}
 	return w, h
 }
 
-// allLogsVPSize: full width minus padding(2), panel minus title bar(1).
+// allLogsVPSize: full-width panel minus borders (2) and title row (1).
 func (m Model) allLogsVPSize() (int, int) {
 	w := m.width - 2
 	if w < 10 {
 		w = 10
 	}
-	h := m.panelHeight() - 1
+	h := m.panelHeight() - 3
 	if h < 1 {
 		h = 1
 	}
@@ -223,8 +227,32 @@ func (m Model) allLogsContent() string {
 	if len(m.allLogs) == 0 {
 		return dimStyle.Render("No logs available")
 	}
+
+	// Build spanID → resource map for banner detection.
+	type resInfo struct {
+		name string
+		role string // ok / fail / working / pending
+	}
+	spanToRes := make(map[string]resInfo)
+	for _, r := range m.resources {
+		info := resInfo{name: r.Name, role: resourceRole(r)}
+		if r.CurrentBuild.SpanID != "" {
+			spanToRes[r.CurrentBuild.SpanID] = info
+		}
+		for _, b := range r.BuildHistory {
+			if b.SpanID != "" {
+				spanToRes[b.SpanID] = info
+			}
+		}
+	}
+
 	var sb strings.Builder
+	lastRes := ""
 	for _, seg := range m.allLogs {
+		if info, ok := spanToRes[seg.SpanID]; ok && info.name != lastRes {
+			sb.WriteString(renderBanner(info.name, info.role, m.width) + "\n")
+			lastRes = info.name
+		}
 		sb.WriteString(renderSegment(seg))
 	}
 	return sb.String()
@@ -268,7 +296,50 @@ func renderSegment(seg api.LogSegment) string {
 	return line + "\n"
 }
 
+// renderBanner renders a resource section header for the All Logs view:
+// "─── name  glyph ──────────────────────────"
+func renderBanner(name, role string, width int) string {
+	glyph, style := bannerIconAndStyle(role)
+	label := fmt.Sprintf("─── %s  %s ", name, glyph)
+	runeLen := len([]rune(label))
+	fill := width - runeLen - 1
+	if fill < 0 {
+		fill = 0
+	}
+	return style.Render(label + strings.Repeat("─", fill))
+}
+
+func bannerIconAndStyle(role string) (string, lipgloss.Style) {
+	switch role {
+	case "ok":
+		return "✓", bannerOkStyle
+	case "fail":
+		return "✗", bannerErrorStyle
+	case "working":
+		return "⟳", bannerBuildingStyle
+	default:
+		return "·", bannerDimStyle
+	}
+}
+
 // ── Status helpers ────────────────────────────────────────────────────────────
+
+// resourceRole returns one of: ok / fail / working / pending / unknown.
+func resourceRole(r api.Resource) string {
+	if !r.CurrentBuild.StartTime.IsZero() && r.CurrentBuild.FinishTime.IsZero() {
+		return "working"
+	}
+	switch r.RuntimeStatus {
+	case "ok":
+		return "ok"
+	case "error":
+		return "fail"
+	case "pending":
+		return "pending"
+	default:
+		return "unknown"
+	}
+}
 
 func statusIcon(r api.Resource) (string, lipgloss.Style) {
 	if !r.CurrentBuild.StartTime.IsZero() && r.CurrentBuild.FinishTime.IsZero() {
@@ -282,7 +353,7 @@ func statusIcon(r api.Resource) (string, lipgloss.Style) {
 	case "pending":
 		return "●", pendingStyle
 	default:
-		return "○", dimStyle
+		return "·", dimStyle
 	}
 }
 
@@ -293,11 +364,11 @@ func timeAgo(t time.Time) string {
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+		return fmt.Sprintf("%ds", int(d.Seconds()))
 	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+		return fmt.Sprintf("%dm", int(d.Minutes()))
 	default:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 }
 
@@ -329,60 +400,63 @@ func (m Model) View() string {
 		return "\n  Loading tt...\n"
 	}
 
-	header := m.renderHeader()
-	menu := m.renderMenu()
-	dot := m.dotLine()
+	if m.width < minWidth || m.height < minHeight {
+		return m.renderTooSmall()
+	}
 
-	var panels string
+	header := m.renderHeader()
+	footer := m.renderFooter()
+
+	var body string
 	switch m.tab {
 	case tabResources:
 		left := m.renderResourceList()
 		right := m.renderLogPanel()
-		panels = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	case tabAllLogs:
-		panels = m.renderAllLogsPanel()
+		body = m.renderAllLogsPanel()
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, dot, panels, dot, menu)
+	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 }
 
-func (m Model) dotLine() string {
-	var sb strings.Builder
-	for i := 0; i < m.width; i++ {
-		if i%2 == 0 {
-			sb.WriteRune('·')
-		} else {
-			sb.WriteRune(' ')
-		}
-	}
-	return dotStyle.Render(sb.String())
+func (m Model) renderTooSmall() string {
+	msg := fmt.Sprintf(
+		"\n\n  %s\n  Needs %dx%d  (current: %dx%d)\n\n  %s\n",
+		errorStyle.Render("Terminal too small"),
+		minWidth, minHeight,
+		m.width, m.height,
+		dimStyle.Render("q quit"),
+	)
+	return msg
 }
 
 func (m Model) renderHeader() string {
 	counts := countStatuses(m.resources)
 
+	left := headerTitleStyle.Render(" tt ") + headerAddrStyle.Render(" "+m.addr)
+
 	var badges []string
 	if counts.ok > 0 {
-		badges = append(badges, okStyle.Render(fmt.Sprintf("✓ %d", counts.ok)))
+		badges = append(badges, okStyle.Render(fmt.Sprintf(" ✓ %d ", counts.ok)))
 	}
 	if counts.errored > 0 {
-		badges = append(badges, errorStyle.Render(fmt.Sprintf("✗ %d", counts.errored)))
+		badges = append(badges, errorStyle.Render(fmt.Sprintf(" ✗ %d ", counts.errored)))
 	}
 	if counts.building > 0 {
-		badges = append(badges, buildingStyle.Render(fmt.Sprintf("⟳ %d", counts.building)))
+		badges = append(badges, buildingStyle.Render(fmt.Sprintf(" ⟳ %d ", counts.building)))
 	}
 	if counts.pending > 0 {
-		badges = append(badges, pendingStyle.Render(fmt.Sprintf("● %d", counts.pending)))
+		badges = append(badges, pendingStyle.Render(fmt.Sprintf(" ● %d ", counts.pending)))
 	}
 	if m.loading {
-		badges = append(badges, dimStyle.Render("syncing…"))
+		badges = append(badges, dimStyle.Render(" syncing… "))
 	}
 	if m.err != nil {
-		badges = append(badges, errorStyle.Render("unreachable"))
+		badges = append(badges, errorStyle.Render(" unreachable "))
 	}
+	right := strings.Join(badges, "")
 
-	left := headerStyle.Render("tt  " + dimStyle.Render(m.addr))
-	right := headerRightStyle.Render(strings.Join(badges, "  "))
 	fill := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if fill < 0 {
 		fill = 0
@@ -390,76 +464,89 @@ func (m Model) renderHeader() string {
 	return left + headerFillStyle.Render(strings.Repeat(" ", fill)) + right
 }
 
-func (m Model) renderMenu() string {
-	type tabDef struct {
-		id    activeTab
-		label string
-		key   string
+// renderFooter renders the bottom tab bar + key hints.
+func (m Model) renderFooter() string {
+	var tab1, tab2 string
+	if m.tab == tabResources {
+		tab1 = activeTabStyle.Render("1 Resources")
+		tab2 = inactiveTabStyle.Render("2 All Logs")
+	} else {
+		tab1 = inactiveTabStyle.Render("1 Resources")
+		tab2 = activeTabStyle.Render("2 All Logs")
 	}
-	tabs := []tabDef{
-		{tabResources, "Resources", "1"},
-		{tabAllLogs, "All Logs", "2"},
-	}
+	tabs := tab1 + tab2
 
-	var parts []string
-	for _, t := range tabs {
-		label := fmt.Sprintf(" %s %s ", t.key, t.label)
-		if m.tab == t.id {
-			parts = append(parts, activeTabStyle.Render(label))
-		} else {
-			parts = append(parts, inactiveTabStyle.Render(label))
-		}
+	var hints string
+	if m.tab == tabResources {
+		hints = renderHint("↑↓", "select") + "  " +
+			renderHint("PgUp/Dn", "scroll") + "  " +
+			renderHint("r", "reload")
+	} else {
+		hints = renderHint("PgUp/Dn", "scroll") + "  " +
+			renderHint("r", "reload")
 	}
+	rightHints := renderHint("?", "help") + "  " + renderHint("q", "quit")
 
-	tabBar := strings.Join(parts, "")
-	shortcuts := menuShortcutsStyle.Render("↑↓/jk Navigate · Tab Switch · PgUp/PgDn Scroll · r Reload · q Quit")
-	fill := m.width - lipgloss.Width(tabBar) - lipgloss.Width(shortcuts)
+	tabsW := lipgloss.Width(tabs)
+	hintsW := lipgloss.Width(hints)
+	rightW := lipgloss.Width(rightHints)
+
+	fill := m.width - tabsW - hintsW - rightW - 2
 	if fill < 0 {
 		fill = 0
 	}
-	return tabBar + menuFillStyle.Render(strings.Repeat(" ", fill)) + shortcuts
+	return tabs + " " + hints + keybarFillStyle.Render(strings.Repeat(" ", fill)) + " " + rightHints
+}
+
+func renderHint(key, verb string) string {
+	return keyStyle.Render(key) + " " + descStyle.Render(verb)
 }
 
 func (m Model) renderResourceList() string {
 	var sb strings.Builder
-	sb.WriteString(sectionTitleStyle.Render("Resources") + "\n")
 
-	itemW := m.leftPanelWidth() - 2 // account for border
+	innerW := m.leftPanelWidth() - 2 // subtract left+right border
+	// layout per row: cursor(1) + sp(1) + glyph(1) + sp(1) + name(flex) + sp(1) + age(4) = 9 fixed
+	ageW := 4
+	nameW := innerW - 9
+	if nameW < 1 {
+		nameW = 1
+	}
 
 	for i, r := range m.resources {
-		icon, style := statusIcon(r)
+		icon, iconStyle := statusIcon(r)
 
 		name := r.Name
 		if r.HasPendingChanges {
 			name += " *"
 		}
-		line1 := fmt.Sprintf(" %s %s", icon, name)
+		if len([]rune(name)) > nameW {
+			runes := []rune(name)
+			name = string(runes[:nameW-1]) + "⋯"
+		}
 
-		// Second line: status + last build time
 		lastBuild := r.CurrentBuild.FinishTime
 		if lastBuild.IsZero() && len(r.BuildHistory) > 0 {
 			lastBuild = r.BuildHistory[0].FinishTime
 		}
-		status := r.RuntimeStatus
-		if !r.CurrentBuild.StartTime.IsZero() && r.CurrentBuild.FinishTime.IsZero() {
-			status = "building"
-		}
-		line2 := fmt.Sprintf("   %s · %s", status, timeAgo(lastBuild))
+		age := timeAgo(lastBuild)
 
 		if i == m.cursor {
-			sb.WriteString(selectedItemStyle.Width(itemW).Render(line1) + "\n")
-			sb.WriteString(selectedSubStyle.Width(itemW).Render(line2) + "\n")
+			line := fmt.Sprintf("❯ %s %-*s %*s", icon, nameW, name, ageW, age)
+			sb.WriteString(selectedItemStyle.Width(innerW).Render(line) + "\n")
 		} else {
-			sb.WriteString(style.Render(line1) + "\n")
-			sb.WriteString(itemSubStyle.Render(line2) + "\n")
+			line := "  " + iconStyle.Render(icon) +
+				fmt.Sprintf(" %-*s ", nameW, name) +
+				itemAgeStyle.Render(fmt.Sprintf("%*s", ageW, age))
+			sb.WriteString(line + "\n")
 		}
 	}
 
 	if m.err != nil {
-		sb.WriteString("\n" + errorStyle.Render(" "+m.err.Error()))
+		sb.WriteString("\n" + errorStyle.Render("  "+m.err.Error()))
 	}
 
-	return listPanelStyle.
+	return focusedPanelStyle.
 		Width(m.leftPanelWidth()).
 		Height(m.panelHeight()).
 		Render(sb.String())
@@ -473,7 +560,7 @@ func (m Model) renderLogPanel() string {
 	title := sectionTitleStyle.Render("Logs: " + name)
 	content := lipgloss.JoinVertical(lipgloss.Left, title, m.resourcesVP.View())
 
-	return logPanelStyle.
+	return unfocusedPanelStyle.
 		Width(m.rightPanelWidth()).
 		Height(m.panelHeight()).
 		Render(content)
@@ -483,7 +570,7 @@ func (m Model) renderAllLogsPanel() string {
 	title := sectionTitleStyle.Render("All Logs")
 	content := lipgloss.JoinVertical(lipgloss.Left, title, m.allLogsVP.View())
 
-	return logPanelStyle.
+	return unfocusedPanelStyle.
 		Width(m.width).
 		Height(m.panelHeight()).
 		Render(content)
